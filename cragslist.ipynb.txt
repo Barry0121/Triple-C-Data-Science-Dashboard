@@ -1,0 +1,392 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "471e0bb2-44d7-4bcf-ac82-e2598020f6f2",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import requests\n",
+    "from bs4 import BeautifulSoup\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import re\n",
+    "import time\n",
+    "import random\n",
+    "import csv"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "9f0c2e53-a382-4f8c-aa73-0081b4d01e1d",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# # only for the first time to create the csv file\n",
+    "# scrapped_links = open(\"scrapped.csv\", \"a+\")\n",
+    "# fieldnames = ['link']\n",
+    "# writer = csv.DictWriter(scrapped_links, fieldnames=fieldnames)\n",
+    "# writer.writeheader()\n",
+    "# scrapped_links.close()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "1fb758f6-f00a-421d-ab38-254c9867c85f",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "fieldnames = [\n",
+    "    'url',\n",
+    "    'post_id',\n",
+    "    'post_date',\n",
+    "    'description',\n",
+    "    'num_beds',\n",
+    "    'num_baths',\n",
+    "    'price',\n",
+    "    'address',\n",
+    "    'sqft',\n",
+    "    'features'\n",
+    "]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "d582714b-0451-4437-8068-74cc58e205d1",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# # First time only: to set up the csv file\n",
+    "# with open('craigslist.csv', mode='a+') as df:\n",
+    "#     writer = csv.DictWriter(df, fieldnames = fieldnames)\n",
+    "#     writer.writeheader()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "69252f04-3bdb-4abd-9f9d-7939779f4036",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_housing_links(dist = 10, postal = 92037,\n",
+    "    url = \"https://sandiego.craigslist.org/d/apartments-housing-for-rent/search/apa?s={page}&availabilityMode=0&postal={zip_code}&search_distance={miles}\" \n",
+    "    ):\n",
+    "    \"\"\"\n",
+    "    Function that takes in two parameters, distance in miles and the zip code we are performing our search in.\n",
+    "    It will search postings within the set radius around the zip code and save its links\n",
+    "    dist: int\n",
+    "    postal: int\n",
+    "    url: string of the website of the craigslist site, default is the san diego craigslist.\n",
+    "    returns: a set of links to scrape\n",
+    "    \"\"\"\n",
+    "    # Find the county we are searching in \n",
+    "    county = re.match(\"^https:\\/\\/([\\w]+).craigslist.org\", url).group(1)\n",
+    "    posting_links = set()\n",
+    "    # Find all of the links that redirects to the posting on craigslist\n",
+    "    temp_url = url.format(miles = dist, zip_code = postal, page = 0)\n",
+    "    listing = requests.get(temp_url)\n",
+    "    content = listing.text\n",
+    "    soup = BeautifulSoup(content, 'html.parser')\n",
+    "    # find the number of search results\n",
+    "    total_count = int(soup.find('span', attrs = {'class': 'totalcount'}).text)\n",
+    "    # We land on the first page and every page lists 120 postings\n",
+    "    current, num_results_on_a_page = 0, 120\n",
+    "    while current < total_count:\n",
+    "        # Access the website and parse the webpage\n",
+    "        time.sleep(random.randint(2, 10))\n",
+    "        temp_url = url.format(miles = dist, zip_code = postal, page = current)\n",
+    "        listing = requests.get(temp_url)\n",
+    "        content = listing.text\n",
+    "        soup = BeautifulSoup(content, 'html.parser')\n",
+    "        htmls = soup.find_all('a', attrs = {'class': 'result-title hdrlnk'})\n",
+    "        for link in htmls:\n",
+    "            # Filter out the sponsored results\n",
+    "            address = link.get('href')\n",
+    "            if county in address:\n",
+    "                posting_links.add(address)\n",
+    "        current += num_results_on_a_page\n",
+    "    return posting_links      "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "e39a40ef-92c7-41c3-9e20-5de73ba5b694",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_basic_info(post):\n",
+    "    \"\"\"\n",
+    "    Input: post takes in a soup object of a craigslist posting\n",
+    "    and returns the post_id and post_date in a tuple\n",
+    "    \"\"\"    \n",
+    "    url = post.find(\"meta\", property=\"og:url\").get('content')\n",
+    "    if url is None:\n",
+    "        post_id = None\n",
+    "    else:\n",
+    "        post_id = re.search('([\\d]+).html', url).group(1)\n",
+    "    post_date = post.find('time', attrs = {'class': 'date timeago'}).get('datetime')\n",
+    "    return {\n",
+    "        'url': url,\n",
+    "        'post_id': post_id,\n",
+    "        'post_date': post_date\n",
+    "    }"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "e1a0608b-92e4-4a2f-abf0-3859857260e8",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_listing_info(post):\n",
+    "    \"\"\"\n",
+    "    Input: post takes in a soup object of a craigslist posting\n",
+    "    Returns: a number of bedrooms, bathrooms, price, address, and the size of the listing as a dictionary\n",
+    "    \"\"\"\n",
+    "    price = post.find('span', attrs = {'class': 'price'})\n",
+    "    if price is not None:\n",
+    "        price = price.text.strip('$').replace(',', '')\n",
+    "    else:\n",
+    "        price = -1\n",
+    "    temp = post.find('span', attrs = {'class': 'shared-line-bubble'}).text.split('/')\n",
+    "    if temp is None:\n",
+    "        num_beds = -1\n",
+    "        num_baths = -1\n",
+    "    else:\n",
+    "        temp = [i.strip() for i in temp]\n",
+    "        if len(temp) == 2: # listed both the number of bathrooms and bedrooms\n",
+    "            num_beds = int(temp[0].lower().strip('br'))\n",
+    "            num_baths = temp[1].lower().strip('ba')\n",
+    "        elif len(temp) == 1: # Listed one but not the other\n",
+    "            if \"br\" in temp[0].lower():\n",
+    "                num_beds = temp[0].lower().strip('br')\n",
+    "                num_baths = -1\n",
+    "            elif \"ba\" in temp[0].lower():\n",
+    "                num_beds = -1\n",
+    "                num_baths = temp[0].lower.strip(\"ba\")\n",
+    "    address = post.find('div', attrs = {'class': 'mapaddress'}) #unable to scrape address if there is none\n",
+    "    if address is not None:\n",
+    "        address = address.text\n",
+    "    sqft = post.find_all('span', attrs = {'class': 'shared-line-bubble'})\n",
+    "    if len(sqft) == 2 and 'ft2' in sqft[1].text:\n",
+    "        sqft = sqft[1].text.strip('ft2')\n",
+    "    else:\n",
+    "        sqft = -1\n",
+    "    return {\n",
+    "        'num_beds': num_beds,\n",
+    "        'num_baths': num_baths,\n",
+    "        'price': price,\n",
+    "        'address': address,\n",
+    "        'sqft': sqft\n",
+    "    }"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "efd6c242-cfb9-4129-9e97-f8518cc0d362",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_desc(post):\n",
+    "    \"\"\"\n",
+    "    Input: post takes in a soup object of a craigslist posting\n",
+    "    Returns: a dictionary of the string of the description for the posting by the poster\n",
+    "    \"\"\"\n",
+    "    description = post.find('section', attrs = {'id': 'postingbody'})\n",
+    "    if description is not None:\n",
+    "        description = description.text.strip().strip('QR Code Link to This Post\\n\\n\\n')\n",
+    "    return {'description': description}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "6182570e-583f-40ee-9444-f7e8d2ce57c1",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_features(post, feature_vector = {}):\n",
+    "    \"\"\"\n",
+    "    Input: post takes in a soup object of a craigslist posting\n",
+    "    feature vector is a dictionary of keys with value 0\n",
+    "    Returns a number of features indicated by the poster\n",
+    "    \"\"\"\n",
+    "    # might be modifying every feature vector instead\n",
+    "    search = post.find_all('p', attrs = {'class': 'attrgroup'})\n",
+    "    \n",
+    "    if len(search) == 2: # posting has listed attributes\n",
+    "        # app_fee_found = False\n",
+    "        attributes = [i.text for i in search[1].find_all('span')]\n",
+    "        feature_vector['features'] = attributes\n",
+    "        # for attr in attributes:\n",
+    "            # if \"application fee\" in attr:\n",
+    "                # app_fee_found = True\n",
+    "                # fee = re.search(\"\\$([\\d]+)\", attr)\n",
+    "                # if fee is not None:\n",
+    "                    # feature_vector['application fee'] = fee.group(1)\n",
+    "                # else:\n",
+    "                    # feature_vector['application fee'] = -1\n",
+    "            # else:\n",
+    "                # feature_vector[attr] = 1\n",
+    "        # if app_fee_found == False:\n",
+    "            # feature_vector['application fee'] = -1\n",
+    "    else:\n",
+    "        feature_vector['features'] = []\n",
+    "    return feature_vector"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "333c1cf9-efd3-4285-8e4a-96ebf79b8aa3",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_post(post):\n",
+    "    row = dict()\n",
+    "    post_info = scrape_basic_info(post)\n",
+    "    row.update(post_info)\n",
+    "    description = scrape_desc(post)\n",
+    "    row.update(description)\n",
+    "    info = scrape_listing_info(post)\n",
+    "    row.update(info)\n",
+    "    features = scrape_features(post)\n",
+    "    row.update(features)\n",
+    "    return row"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "b2252836-81a1-41a4-8d1c-254a3e5ef623",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def write_to_csv(post):\n",
+    "    \"\"\"\n",
+    "    Writes to the csv file\n",
+    "    \"\"\"\n",
+    "    with open('craigslist.csv', mode='a+') as df:\n",
+    "        writer = csv.DictWriter(df, fieldnames = fieldnames, extrasaction='ignore', restval = None)\n",
+    "        parsed_data = scrape_post(post)\n",
+    "        if parsed_data is not None:\n",
+    "            writer.writerow(parsed_data)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "7cacc772-b9b9-41cb-a568-aa921b6b4fde",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_webpages(links):\n",
+    "    \"\"\"\n",
+    "    links is an iterable\n",
+    "    returns a list of soup objects\n",
+    "    \"\"\"\n",
+    "    for link in links:\n",
+    "        time.sleep(random.randint(2, 10))\n",
+    "        listing = requests.get(link)\n",
+    "        content = listing.text\n",
+    "        soup = BeautifulSoup(content)\n",
+    "        write_to_csv(soup)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "3519b412-c425-4482-9677-9b1dfefbf5aa",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def scrape_pages():\n",
+    "    \"\"\"\n",
+    "    Pipeline to streamline scraping for websites and download the webpage\n",
+    "    \"\"\"\n",
+    "    # Download links of relevent postings\n",
+    "    links = scrape_housing_links()\n",
+    "    \n",
+    "    # Add new postings to the list of scrapped postings\n",
+    "    with open('scrapped.csv', mode='a+') as scrapped:\n",
+    "        writer = csv.DictWriter(scrapped, fieldnames = [\"link\"])\n",
+    "        reader = csv.reader(scrapped)\n",
+    "        next(reader, None)  # skip the headers\n",
+    "        scrapped_links = [link[0] for link in reader]\n",
+    "        \n",
+    "        # remove duplicate links that has been downloaded before\n",
+    "        to_download = links.difference(set(scrapped_links)) \n",
+    "        for link in to_download: \n",
+    "            temp = {\"link\": link}\n",
+    "            writer.writerow(temp)\n",
+    "    \n",
+    "    # Scrape the webpage and save it to a csv file\n",
+    "    scrape_webpages(to_download)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "id": "751badc0-9ff6-440c-9ea1-5759f14bb61a",
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "AttributeError",
+     "evalue": "'NoneType' object has no attribute 'get'",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mAttributeError\u001b[0m                            Traceback (most recent call last)",
+      "\u001b[0;32m/var/folders/ml/3qpj1_6x4fj_gcl3ztrny2700000gn/T/ipykernel_67725/3046719496.py\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[0;32m----> 1\u001b[0;31m \u001b[0mscrape_pages\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m/var/folders/ml/3qpj1_6x4fj_gcl3ztrny2700000gn/T/ipykernel_67725/2615495567.py\u001b[0m in \u001b[0;36mscrape_pages\u001b[0;34m()\u001b[0m\n\u001b[1;32m     20\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     21\u001b[0m     \u001b[0;31m# Scrape the webpage and save it to a csv file\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 22\u001b[0;31m     \u001b[0mscrape_webpages\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mto_download\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m/var/folders/ml/3qpj1_6x4fj_gcl3ztrny2700000gn/T/ipykernel_67725/2356308180.py\u001b[0m in \u001b[0;36mscrape_webpages\u001b[0;34m(links)\u001b[0m\n\u001b[1;32m      9\u001b[0m         \u001b[0mcontent\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mlisting\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mtext\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     10\u001b[0m         \u001b[0msoup\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mBeautifulSoup\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mcontent\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 11\u001b[0;31m         \u001b[0mwrite_to_csv\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msoup\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m/var/folders/ml/3qpj1_6x4fj_gcl3ztrny2700000gn/T/ipykernel_67725/3851586001.py\u001b[0m in \u001b[0;36mwrite_to_csv\u001b[0;34m(post)\u001b[0m\n\u001b[1;32m     17\u001b[0m         ]\n\u001b[1;32m     18\u001b[0m         \u001b[0mwriter\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mcsv\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mDictWriter\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mdf\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mfieldnames\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mfieldnames\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mextrasaction\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m'ignore'\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mrestval\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 19\u001b[0;31m         \u001b[0mparsed_data\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mscrape_post\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mpost\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     20\u001b[0m         \u001b[0;32mif\u001b[0m \u001b[0mparsed_data\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mnot\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     21\u001b[0m             \u001b[0mwriter\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mwriterow\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mparsed_data\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/var/folders/ml/3qpj1_6x4fj_gcl3ztrny2700000gn/T/ipykernel_67725/2605047335.py\u001b[0m in \u001b[0;36mscrape_post\u001b[0;34m(post)\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0;32mdef\u001b[0m \u001b[0mscrape_post\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mpost\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      2\u001b[0m     \u001b[0mrow\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mdict\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 3\u001b[0;31m     \u001b[0mpost_info\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mscrape_basic_info\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mpost\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      4\u001b[0m     \u001b[0mrow\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mupdate\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mpost_info\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      5\u001b[0m     \u001b[0mdescription\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mscrape_desc\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mpost\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/var/folders/ml/3qpj1_6x4fj_gcl3ztrny2700000gn/T/ipykernel_67725/1901921457.py\u001b[0m in \u001b[0;36mscrape_basic_info\u001b[0;34m(post)\u001b[0m\n\u001b[1;32m      4\u001b[0m     \u001b[0;32mand\u001b[0m \u001b[0mreturns\u001b[0m \u001b[0mthe\u001b[0m \u001b[0mpost_id\u001b[0m \u001b[0;32mand\u001b[0m \u001b[0mpost_date\u001b[0m \u001b[0;32min\u001b[0m \u001b[0ma\u001b[0m \u001b[0mtuple\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      5\u001b[0m     \"\"\"    \n\u001b[0;32m----> 6\u001b[0;31m     \u001b[0murl\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mpost\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mfind\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"meta\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mproperty\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m\"og:url\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mget\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m'content'\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      7\u001b[0m     \u001b[0;32mif\u001b[0m \u001b[0murl\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      8\u001b[0m         \u001b[0mpost_id\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mAttributeError\u001b[0m: 'NoneType' object has no attribute 'get'"
+     ]
+    }
+   ],
+   "source": [
+    "scrape_pages()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "4c1a20c1-e8f5-4969-a0bc-c1ebb0f5dc1d",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.12"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
