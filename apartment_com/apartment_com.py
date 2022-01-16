@@ -10,7 +10,9 @@ import time
 import platform
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
+# from selenium.webdriver.edge.options import Options
+from msedge.selenium_tools import Edge
+from msedge.selenium_tools import EdgeOptions
 
 # Config parser was renamed in Python 3
 try:
@@ -46,7 +48,7 @@ def create_csv(search_urls, map_info, fname, pscores):
                   'Images', 'Description']
         # add the score fields if necessary
         if pscores:
-            for i in xrange(len(header), 0, -1):
+            for i in range(len(header), 0, -1):
                 header.insert(i, 5)
             # flag that we're importing with scores
             header[1] = 'score'
@@ -72,12 +74,12 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, we
     if(web_driver != None):
         driver = web_driver
     else:
-        options = Options()
+        options = EdgeOptions()
         options.headless = True
         if ('debian' in platform.platform()):
-            driver = webdriver.Firefox(firefox_binary='/usr/bin/firefox-esr', options=options)
+            driver = webdriver.Firefox(firefox_binary='/usr/bin/firefox-esr', options=options) # my machine doesn't have firefox so this is left hanging for now
         else:
-            driver = webdriver.Firefox(options=options)
+            driver = Edge("../msedgedriver", options=options)
         driver.get(page_url)
 
     # read the current page
@@ -126,7 +128,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, we
                fields['img'], fields['description']]
         # add the score fields if necessary
         if pscores:
-            for i in xrange(len(row), 0, -1):
+            for i in range(len(row), 0, -1):
                 row.insert(i, '5')
             row.append('0')
         # write the row
@@ -526,7 +528,8 @@ def main():
     """Read from the config file and get the Google maps info optionally"""
 
     conf = configparser.ConfigParser()
-    config_file = os.path.join(os.path.dirname(__file__), "config.ini")
+    # config_file = os.path.join(os.path.dirname(__file__), "config.ini") # os.path.dirname(__file__) doesn't work for some reasion
+    config_file = os.path.join('./', "config.ini")
     conf.read(config_file)
 
     # get the apartments.com search URL(s)
