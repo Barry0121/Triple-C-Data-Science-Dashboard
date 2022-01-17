@@ -59,7 +59,7 @@ def create_csv(search_urls, map_info, fname, pscores):
         # parse current entire apartment list including pagination for all search urls
         for url in search_urls:
             print ("Now getting apartments from: %s" % url)
-            write_parsed_to_csv(url, map_info, writer, pscores)
+            write_parsed_to_csv(url.strip("()"), map_info, writer, pscores)
 
     finally:
         csv_file.close()
@@ -79,7 +79,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, we
         if ('debian' in platform.platform()):
             driver = webdriver.Firefox(firefox_binary='/usr/bin/firefox-esr', options=options) # my machine doesn't have firefox so this is left hanging for now
         else:
-            driver = Edge("../msedgedriver", options=options)
+            driver = Edge(".\msedgedriver.exe", options=options)
         driver.get(page_url)
 
     # read the current page
@@ -89,7 +89,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, we
     soup.prettify()
     # only look in this region
     soup = soup.find('div', class_='placardContainer')
-
+    # if soup.text!="": print("There is something on the page!!") #--testing code
     # append the current apartments to the list
     for item in soup.find_all('article', class_='placard'):
         url = ''
@@ -140,6 +140,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, we
     try:
         page_number_element = driver.find_element_by_xpath("//a[@data-page='" + page_number_str + "']")
         page_number_element.click()
+        print("Next Page!!")
         time.sleep(1)
     # we will get a no element found exception, meaning our search has come to an end
     except:
