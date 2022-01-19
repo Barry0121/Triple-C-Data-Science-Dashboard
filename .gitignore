@@ -353,3 +353,4 @@ MigrationBackup/
 *.iml
 *.xml
 msedgedriver
+.DS_Store
