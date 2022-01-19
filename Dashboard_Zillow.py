@@ -2,6 +2,7 @@ import requests
 import pandas as pd
 import json
 import os
+from datetime import datetime, date, timedelta
 
 
 def parse_house():
@@ -64,7 +65,11 @@ def parse_house():
 
         # loop via data
         for house in json_data['cat1']['searchResults']['listResults']:
+            today = datetime.now()
+            house['date_parsed'] = datetime.strftime(today, '%Y-%m-%d')
             houses.append(house)
+
+    print("Number of houses parsed:" + str(len(houses)))
     return houses
 
 
@@ -86,8 +91,9 @@ def store():
     fname = "zillow.csv"
     if os.path.isfile(fname):
         past = pd.read_csv(fname)
-        past['providerListingId'] = past['providerListingId'].astype(str)
-        new = past.merge(df, on='providerListingId', how='left')
+        #past['providerListingId'] = past['providerListingId'].astype(str)
+        new = pd.concat([past, df])
+        new = new.drop_duplicates(subset=['providerListingId', 'date_parsed']).reset_index(drop=True)
         print('Total houses added - {}'.format(len(new) - len(past)))
         new.to_csv("zillow.csv", index=False)
     else:
