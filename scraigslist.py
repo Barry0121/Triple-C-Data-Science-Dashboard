@@ -7,7 +7,7 @@ import time
 import random
 import csv
 import cronitor
-from datetime import date
+from datetime import datetime
 
 # cronitor.api_key = 'db021f17534f4c29be499dd11edbb6ba'
 #
@@ -28,7 +28,8 @@ fieldnames = [
     'price',
     'address',
     'sqft',
-    'features'
+    'features',
+    'scrape_date'
 ]
 
 # @cronitor.job('Scrape Craigslist')
@@ -186,6 +187,7 @@ def scrape_post(post):
     row.update(info)
     features = scrape_features(post)
     row.update(features)
+    row['scrape_date'] = datetime.today()
     return row
 
 def write_to_csv(post):
@@ -267,4 +269,4 @@ def scraper():
 
 scraper()
 with open('scrape_log.txt', mode = 'a') as f:
-    f.write('Scrape completed on {}'.format(date.today()))
+    f.write('Scrape completed on {}\n'.format(datetime.today()))
