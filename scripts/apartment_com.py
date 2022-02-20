@@ -20,7 +20,7 @@ try:
 except ImportError:
     import ConfigParser as configparser
 
-def create_csv(search_urls, map_info, fname, pscores):
+def create_csv(search_urls, map_info, fname, pscores, webdriver_path="../utils/msedgedriver"):
     """Create a CSV file with information that can be imported into ideal-engine"""
 
     # avoid the issue on Windows where there's an extra space every other line
@@ -59,34 +59,44 @@ def create_csv(search_urls, map_info, fname, pscores):
         # parse current entire apartment list including pagination for all search urls
         for url in search_urls:
             print ("Now getting apartments from: %s" % url)
-            write_parsed_to_csv(url.strip("()"), map_info, writer, pscores)
+            write_parsed_to_csv(url.strip("()"), map_info, writer, pscores, webdriver_path=webdriver_path)
 
     finally:
         csv_file.close()
 
 
-def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, web_driver = None):
+def write_parsed_to_csv(page_url, map_info, writer, pscores, webdriver_path=None, page_number = 2, web_driver = None):
     """Given the current page URL, extract the information from each apartment in the list"""
 
     # We start on page_number = 2, since we will already be parsing page_number 1
-
+    print("Intuition Check: ", page_url, page_number)
     # if we are loading the page for the first time, we want to initailize the web driver
     if(web_driver != None):
         driver = web_driver
     else:
         options = EdgeOptions()
+        options.use_chromium = True
         options.headless = True
+        # options.add_argument('allow-elevated-browser')
+        desired_cap = { # Tweak Capabilities according to your own machines' setting
+            "os" : "OS X",
+            "os_version" : "Catalina",
+            "browser" : "Edge",
+            "browser_version" : "98.0",
+            "browserstack.local" : "false",
+            "browserstack.selenium_version" : "3.141.3"
+        }
         if ('debian' in platform.platform()):
             driver = webdriver.Firefox(firefox_binary='/usr/bin/firefox-esr', options=options) # my machine doesn't have firefox so this is left hanging for now
         else:
-            driver = Edge(".\msedgedriver.exe", options=options)
+            driver = Edge(webdriver_path, capabilities=desired_cap)
         driver.get(page_url)
 
     # read the current page
     soup = BeautifulSoup(driver.page_source, 'html.parser')
-
     # soupify the current page
     soup.prettify()
+
     # only look in this region
     soup = soup.find('div', class_='placardContainer')
     # if soup.text!="": print("There is something on the page!!") #--testing code
@@ -96,28 +106,28 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, we
         rent = ''
         contact = ''
 
-        if item.find('a', class_='placardTitle') is None: continue
-        url = item.find('a', class_='placardTitle').get('href')
+        if item.find('a', class_='property-link') is None: continue
+        url = item.find('a', class_='property-link').get('href')
 
         # get the rent and parse it to unicode
-        obj = item.find('span', class_='altRentDisplay')
+        obj = item.find('p', class_='property-pricing')
         if obj is not None:
-            rent = obj.getText().strip()
+            rent = re.sub('[,n\'\"\s]*','',obj.getText()).strip('\\')
 
         # get the phone number and parse it to unicode
-        obj = item.find('div', class_='phone')
+        obj = item.find('a', class_='phone-link js-phone')
         if obj is not None:
-            contact = obj.getText().strip()
+            contact = obj.get('href').strip('tel:')
 
         # get the other fields to write to the CSV
-        fields = parse_apartment_information(url, map_info)
+        fields = parse_apartment_information(url, map_info) # TODO: Debug this Function
 
         # make this wiki markup
         fields['name'] = '[' + str(fields['name']) + '](' + url + ')'
         fields['address'] = '[' + fields['address'] + '](' + fields['map'] + ')'
 
         # fill out the CSV file
-        row = [fields['name'], contact,
+        row = [fields['name'], contact, # TODO: Contact and Rent are missing for some of the entries after page3
                fields['address'], fields['size'],
                rent, fields['monthFees'], fields['onceFees'],
                fields['petPolicy'], fields['distance'], fields['duration'],
@@ -148,7 +158,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, page_number = 2, we
         return
 
     # recurse until the last page
-    write_parsed_to_csv("none", map_info, writer, pscores, page_number + 1, driver)
+    write_parsed_to_csv(page_url="none", map_info=map_info, writer=writer, pscores=pscores, page_number=page_number + 1, web_driver=driver)
 
 
 def parse_apartment_information(url, map_info):
@@ -166,19 +176,19 @@ def parse_apartment_information(url, map_info):
     fields = {}
 
     # get the name of the property
-    get_property_name(soup, fields)
+    get_property_name(soup, fields) # check
 
     # get the address of the property
-    get_property_address(soup, fields)
+    get_property_address(soup, fields) # check
 
     # get the size of the property
-    get_property_size(soup, fields)
+    get_property_size(soup, fields) # check
 
     # get the one time and monthly fees
-    get_fees(soup, fields)
+    get_fees(soup, fields) # check
 
     # get the images as a list
-    get_images(soup, fields)
+    get_images(soup, fields) # check
 
     # get the description section
     get_description(soup, fields)
@@ -246,9 +256,9 @@ def prettify_text(data):
     # format it nicely: remove trailing spaces
     data = data.strip()
     # format it nicely: encode it, removing special symbols
-    data = data.encode('utf8', 'ignore')
+    # data = data.encode('utf8', 'ignore') # Why is everything encoded???
 
-    return str(data).encode('utf-8')
+    return str(data)
 
 
 def get_images(soup, fields):
@@ -259,10 +269,12 @@ def get_images(soup, fields):
     if soup is None: return
 
     # find ul with id fullCarouselCollection
-    soup = soup.find('ul', {'id': 'fullCarouselCollection'})
+    soup = soup.find_all('div', {'class': 'carouselContent'})[1:] # there will be 2: 1 for scenery, 1 for floor plans
+    print(soup)
     if soup is not None:
-        for img in soup.find_all('img'):
-            fields['img'] += '![' + img['alt'] + '](' + img['src'] + ') '
+        for sub_soup in soup:
+            for img in sub_soup.find_all('meta'):
+                fields['img'] += '![' + img['title'] + '](' + img['content'] + ') '
 
 def get_description(soup, fields):
     """Get the description for the apartment"""
@@ -272,10 +284,10 @@ def get_description(soup, fields):
     if soup is None: return
 
     # find p with itemprop description
-    obj = soup.find('p', {'itemprop': 'description'})
+    obj = soup.find('section', {'class': 'descriptionSection'})
 
     if obj is not None:
-        fields['description'] = prettify_text(obj.getText())
+        fields['description'] = prettify_text(obj.text)
 
 def get_property_size(soup, fields):
     """Given a beautifulSoup parsed page, extract the property size of the first one bedroom"""
@@ -285,9 +297,12 @@ def get_property_size(soup, fields):
 
     if soup is None: return
 
-    obj = soup.find('tr', {'data-beds': '1'})
+    container = soup.findAll('div', class_="priceBedRangeInfoInnerContainer")
+
+    obj = container[1].find('p', class_='rentInfoDetail').text
+    print(obj)
     if obj is not None:
-        data = obj.find('td', class_='sqft').getText()
+        data = container[3].find('p', class_='rentInfoDetail').text
         data = prettify_text(data)
         fields['size'] = data
 
@@ -373,6 +388,7 @@ def get_fees(soup, fields):
     if soup is None: return
 
     obj = soup.find('div', class_='monthlyFees')
+    print(obj)
     if obj is not None:
         for expense in obj.find_all('div', class_='fee'):
             description = expense.find(
@@ -386,16 +402,18 @@ def get_fees(soup, fields):
 
     # get one time fees
     obj = soup.find('div', class_='oneTimeFees')
+    print(obj)
     if obj is not None:
-        for expense in obj.find_all('div', class_='fee'):
+        for expense in obj.find_all('div', class_='descriptionWrapper'):
             description = expense.find(
-                'div', class_='descriptionWrapper').getText()
+                'span', class_='expense-description').text
             description = prettify_text(description)
 
-            price = expense.find('div', class_='priceWrapper').getText()
+            price = expense.find('span', class_='expense-cost').text
             price = prettify_text(price)
 
-            fields['onceFees'] += '* ' + description + ': ' + price + '\n'
+            print(description, price)
+            fields['onceFees'] += '* ' + description + ': ' + price + '\n' # this is for formatting
 
     # remove ending \n
     fields['monthFees'] = fields['monthFees'].strip()
@@ -490,7 +508,7 @@ def get_property_address(soup, fields):
     address = ""
 
     # They changed how this works so I need to grab the script
-    script = soup.findAll('script', type='text/javascript')[2].text
+    script = soup.findAll('script', type='text/javascript')[3].text
 
     # The address is everything in quotes after listingAddress
     address = find_addr(script, "listingAddress")

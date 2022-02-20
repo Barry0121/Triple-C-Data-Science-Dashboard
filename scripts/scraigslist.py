@@ -194,7 +194,7 @@ def write_to_csv(post):
     """
     Writes to the csv file
     """
-    with open('craigslist.csv', mode='a+') as df:
+    with open('../data/craigslist.csv', mode='a+') as df:
         writer = csv.DictWriter(df, fieldnames = fieldnames, extrasaction='ignore', restval = None)
         parsed_data = scrape_post(post)
         if parsed_data is not None:
@@ -222,12 +222,12 @@ def scrape_pages():
     links = scrape_housing_links()
 
     # Add new postings to the list of scrapped postings
-    with open('scrapped.csv', mode='r') as f:
+    with open('../data/scrapped.csv', mode='r') as f:
         reader = csv.reader(f)
         next(reader, None)  # skip the headers
         scrapped_links = set([link[0] for link in reader])
 
-    with open('scrapped.csv', mode='a') as f:
+    with open('../data/scrapped.csv', mode='a') as f:
         # remove duplicate links that has been downloaded before
         # Still need to remove duplicates with the same post id
         # but different url (due to change in title of the post)
@@ -246,7 +246,7 @@ def rescrape():
     the scrape_pages function that left a discrepency between the
     number of scrapped pages and actual entries in craigslist.csv
     """
-    with open('scrapped.csv', mode='r') as f:
+    with open('../data/scrapped.csv', mode='r') as f:
         reader = csv.reader(f)
         next(reader, None)  # skip the headers
         links = set([link[0] for link in reader])
@@ -268,5 +268,5 @@ def scraper():
         print('Done')
 
 scraper()
-with open('scrape_log.txt', mode = 'a') as f:
+with open('../data/scrape_log.txt', mode = 'a') as f:
     f.write('Scrape completed on {}\n'.format(datetime.today()))
