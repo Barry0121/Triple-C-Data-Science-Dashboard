@@ -38,13 +38,12 @@ def create_csv(search_urls, map_info, fname, pscores, webdriver_path="../utils/m
         writer = csv.writer(csv_file)
         # this is the header (make sure it matches with the fields in
         # write_parsed_to_csv)
-        header = ['Option Name', 'Contact', 'Address', 'Size',
+        header = ['Option Name', 'Contact', 'Address', 'Size', "Availability"
                   'Rent', 'Monthly Fees', 'One Time Fees',
+                  'Transportation','Education',
                   'Pet Policy', 'Distance', 'Duration',
-                  'Parking', 'Gym', 'Kitchen',
-                  'Amenities', 'Features', 'Living Space',
-                  'Lease Info', 'Services',
-                  'Property Info', 'Indoor Info', 'Outdoor Info',
+                  'Parking', 'Amenities',
+                #   'Property Info', 'Indoor Info', 'Outdoor Info',
                   'Images', 'Description']
         # add the score fields if necessary
         if pscores:
@@ -58,7 +57,7 @@ def create_csv(search_urls, map_info, fname, pscores, webdriver_path="../utils/m
 
         # parse current entire apartment list including pagination for all search urls
         for url in search_urls:
-            print ("Now getting apartments from: %s" % url)
+            print("Now getting apartments from: %s" % url)
             write_parsed_to_csv(url.strip("()"), map_info, writer, pscores, webdriver_path=webdriver_path)
 
     finally:
@@ -69,8 +68,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, webdriver_path=None
     """Given the current page URL, extract the information from each apartment in the list"""
 
     # We start on page_number = 2, since we will already be parsing page_number 1
-    print("Intuition Check: ", page_url, page_number)
-    # if we are loading the page for the first time, we want to initailize the web driver
+    # if we are loading the page for the first time, we want to initialize the web driver
     if(web_driver != None):
         driver = web_driver
     else:
@@ -127,14 +125,13 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, webdriver_path=None
         fields['address'] = '[' + fields['address'] + '](' + fields['map'] + ')'
 
         # fill out the CSV file
-        row = [fields['name'], contact, # TODO: Contact and Rent are missing for some of the entries after page3
-               fields['address'], fields['size'],
+        row = [fields['name'], contact,
+               fields['address'], fields['size'], fields['availability'],
                rent, fields['monthFees'], fields['onceFees'],
+               fields['transportation'], fields['education'],
                fields['petPolicy'], fields['distance'], fields['duration'],
-               fields['parking'], fields['gym'], fields['kitchen'],
-               fields['amenities'], fields['features'], fields['space'],
-               fields['lease'], fields['services'],
-               fields['info'], fields['indoor'], fields['outdoor'],
+               fields['parking'], fields['amenities'],
+            #    fields['features'], fields['info'],
                fields['img'], fields['description']]
         # add the score fields if necessary
         if pscores:
@@ -150,7 +147,6 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, webdriver_path=None
     try:
         page_number_element = driver.find_element_by_xpath("//a[@data-page='" + page_number_str + "']")
         page_number_element.click()
-        print("Next Page!!")
         time.sleep(1)
     # we will get a no element found exception, meaning our search has come to an end
     except:
@@ -191,43 +187,29 @@ def parse_apartment_information(url, map_info):
     get_images(soup, fields) # check
 
     # get the description section
-    get_description(soup, fields)
+    get_description(soup, fields) # check
+
+    # ADDED: Get Transportation and Education
+    get_transport_education(soup, fields) # check
 
     # only look in this section (other sections are for example for printing)
-    soup = soup.find('section', class_='specGroup js-specGroup')
+    soup = soup.find('div', class_='sectionContainer') # check
+
+    # ADDED: get apartment types
+    get_availability(soup, fields) # check
 
     # get the pet policy of the property
-    get_pet_policy(soup, fields)
+    get_pet_policy(soup, fields) # check
 
     # get parking information
-    get_parking_info(soup, fields)
+    get_parking_info(soup, fields) # check
 
-    # get the amenities description
-    get_field_based_on_class(soup, 'amenities', 'featuresIcon', fields)
+    # ADDED: Get a list of all the amenities avaliable
+    get_amenities(soup, fields) # check
 
-    # get the 'interior information'
-    get_field_based_on_class(soup, 'indoor', 'interiorIcon', fields)
-
-    # get the 'outdoor information'
-    get_field_based_on_class(soup, 'outdoor', 'parksIcon', fields)
-
-    # get the 'gym information'
-    get_field_based_on_class(soup, 'gym', 'fitnessIcon', fields)
-
-    # get the 'kitchen information'
-    get_field_based_on_class(soup, 'kitchen', 'kitchenIcon', fields)
-
-    # get the 'services information'
-    get_field_based_on_class(soup, 'services', 'servicesIcon', fields)
-
-    # get the 'living space information'
-    get_field_based_on_class(soup, 'space', 'sofaIcon', fields)
-
-    # get the lease length
-    get_field_based_on_class(soup, 'lease', 'leaseIcon', fields)
 
     # get the 'property information'
-    get_features_and_info(soup, fields)
+    # get_features_and_info(soup, fields)
 
     # get the link to open in maps
     fields['map'] = 'https://www.google.com/maps/dir/' \
@@ -260,6 +242,27 @@ def prettify_text(data):
 
     return str(data)
 
+def get_transport_education(soup, fields):
+    """Given a beautifulSoup parsed page, extract the transportation and education details"""
+
+    fields['transportation'] = ''
+    fields['education'] = ''
+
+    if soup is None: return
+
+    education = soup.find('div', {"id": "educationContainer"}).find('div', {"class": "spec"}).get_text(strip='\n', separator=', ')
+
+    transport = soup.find('section', {"id": "transportationSection"}).find('div', {"class": "spec"}).get_text(strip='\n', separator=', ')
+
+    if education is not None:
+        ed_data = prettify_text(education)
+
+    if transport is not None:
+        tran_data = prettify_text(transport)
+
+        # format it nicely: remove trailing spaces
+        fields['transportation'] = tran_data
+        fields['education'] = ed_data
 
 def get_images(soup, fields):
     """Get the images of the apartment"""
@@ -270,7 +273,6 @@ def get_images(soup, fields):
 
     # find ul with id fullCarouselCollection
     soup = soup.find_all('div', {'class': 'carouselContent'})[1:] # there will be 2: 1 for scenery, 1 for floor plans
-    print(soup)
     if soup is not None:
         for sub_soup in soup:
             for img in sub_soup.find_all('meta'):
@@ -289,6 +291,22 @@ def get_description(soup, fields):
     if obj is not None:
         fields['description'] = prettify_text(obj.text)
 
+def get_availability(soup, fields):
+    """Get all the listings from availability section"""
+    fields["availability"] = []
+
+    if soup is None: return
+
+    temp_obj = soup.find('section', {'id': 'availabilitySection'}).find('div', {'id': 'pricingView'})
+    obj = temp_obj.find('div', {'class': "tab-section active"})
+
+
+
+    if obj is not None:
+        for listing in soup.findAll('div', {'class': "row"}):
+            target = listing.find('div', {'class': 'column1'})
+            fields['availability'].append(target.get_text(strip='\n', separator=', '))
+
 def get_property_size(soup, fields):
     """Given a beautifulSoup parsed page, extract the property size of the first one bedroom"""
     #note: this might be wrong if there are multiple matches!!!
@@ -300,34 +318,33 @@ def get_property_size(soup, fields):
     container = soup.findAll('div', class_="priceBedRangeInfoInnerContainer")
 
     obj = container[1].find('p', class_='rentInfoDetail').text
-    print(obj)
     if obj is not None:
         data = container[3].find('p', class_='rentInfoDetail').text
         data = prettify_text(data)
         fields['size'] = data
 
 
-def get_features_and_info(soup, fields):
-    """Given a beautifulSoup parsed page, extract the features and property information"""
+# def get_features_and_info(soup, fields):
+#     """Given a beautifulSoup parsed page, extract the features and property information"""
 
-    fields['features'] = ''
-    fields['info'] = ''
+#     fields['features'] = ''
+#     fields['info'] = ''
 
-    if soup is None: return
+#     if soup is None: return
 
-    obj = soup.find('i', class_='propertyIcon')
+#     obj = soup.find('i', class_='propertyIcon')
 
-    if obj is not None:
-        for obj in soup.find_all('i', class_='propertyIcon'):
-            data = obj.parent.findNext('ul').getText()
-            data = prettify_text(data)
+#     if obj is not None:
+#         for obj in soup.find_all('i', class_='propertyIcon'):
+#             data = obj.parent.findNext('ul').getText()
+#             data = prettify_text(data)
 
-            if obj.parent.findNext('h3').getText().strip() == 'Features':
-                # format it nicely: remove trailing spaces
-                fields['features'] = data
-            if obj.parent.findNext('h3').getText() == 'Property Information':
-                # format it nicely: remove trailing spaces
-                fields['info'] = data
+#             if obj.parent.findNext('h3').getText().strip() == 'Features':
+#                 # format it nicely: remove trailing spaces
+#                 fields['features'] = data
+#             if obj.parent.findNext('h3').getText() == 'Property Information':
+#                 # format it nicely: remove trailing spaces
+#                 fields['info'] = data
 
 
 def get_field_based_on_class(soup, field, icon, fields):
@@ -344,6 +361,20 @@ def get_field_based_on_class(soup, field, icon, fields):
 
         fields[field] = data
 
+def get_amenities(soup, fields):
+    """Given a beautifulSoup parsed page, extract the specified field based on the icon"""
+
+    fields['amenities'] = ''
+
+    if soup is None: return
+
+    obj = soup.find('section', {'id': 'amenitiesSection'})
+
+    if obj is not None:
+        data = obj.get_text(strip='\n', separator=', ')
+        data = prettify_text(data)
+
+        fields['amenities'] = data
 
 def get_parking_info(soup, fields):
     """Given a beautifulSoup parsed page, extract the parking details"""
@@ -351,33 +382,44 @@ def get_parking_info(soup, fields):
     fields['parking'] = ''
 
     if soup is None: return
+    try:
+        obj = soup.find('div', {"id": "profileV2FeesWrapper"}).findAll('div', {"class": "feespolicies"})
+        data = ''
+    except(AttributeError):
+        return 
 
-    obj = soup.find('div', class_='parkingDetails')
     if obj is not None:
-        data = obj.getText()
-        data = prettify_text(data)
-
+        for i in obj:
+            if i.find('h4', {'class': "header-column"}).text == "Parking":
+                data = prettify_text(i.parent.parent.findNext('div', {'class':'component-body'}).get_text(strip='\n', separator=', '))
         # format it nicely: remove trailing spaces
-        fields['parking'] = data
-
+        if data == '':
+            fields['parking'] = ""
+        else:
+            fields['parking'] = data
 
 def get_pet_policy(soup, fields):
     """Given a beautifulSoup parsed page, extract the pet policy details"""
+    fields['petPolicy'] = ''
+
     if soup is None:
         fields['petPolicy'] = ''
         return
 
     # the pet policy
-    data = soup.find('div', class_='petPolicyDetails')
-    if data is None:
-        data = ''
-    else:
-        data = data.getText()
-        data = prettify_text(data)
+    try:
+        data = soup.find('section', {'id': 'feesSection'}).find('div', {'class': 'feespolicies'})
 
-    # format it nicely: remove the trailing whitespace
-    fields['petPolicy'] = data
+        if data is None:
+            data = ''
+        else:
+            data = data.get_text(strip=True, separator=', ')
+            data = prettify_text(data)
 
+        # format it nicely: remove the trailing whitespace
+        fields['petPolicy'] = data
+    except(AttributeError):
+        return
 
 def get_fees(soup, fields):
     """Given a beautifulSoup parsed page, extract the one time and monthly fees"""
@@ -388,7 +430,6 @@ def get_fees(soup, fields):
     if soup is None: return
 
     obj = soup.find('div', class_='monthlyFees')
-    print(obj)
     if obj is not None:
         for expense in obj.find_all('div', class_='fee'):
             description = expense.find(
@@ -402,7 +443,6 @@ def get_fees(soup, fields):
 
     # get one time fees
     obj = soup.find('div', class_='oneTimeFees')
-    print(obj)
     if obj is not None:
         for expense in obj.find_all('div', class_='descriptionWrapper'):
             description = expense.find(
@@ -412,7 +452,6 @@ def get_fees(soup, fields):
             price = expense.find('span', class_='expense-cost').text
             price = prettify_text(price)
 
-            print(description, price)
             fields['onceFees'] += '* ' + description + ': ' + price + '\n' # this is for formatting
 
     # remove ending \n
