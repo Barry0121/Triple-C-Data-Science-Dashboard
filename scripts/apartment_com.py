@@ -10,9 +10,9 @@ import time
 import platform
 from bs4 import BeautifulSoup
 from selenium import webdriver
-# from selenium.webdriver.edge.options import Options
-from msedge.selenium_tools import Edge
-from msedge.selenium_tools import EdgeOptions
+from selenium.webdriver.edge.options import Options
+# from msedge.selenium_tools import Edge
+# from msedge.selenium_tools import EdgeOptions
 
 # Config parser was renamed in Python 3
 try:
@@ -72,7 +72,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, webdriver_path=None
     if(web_driver != None):
         driver = web_driver
     else:
-        options = EdgeOptions()
+        options = Options()
         options.use_chromium = True
         options.headless = True
         # options.add_argument('allow-elevated-browser')
@@ -87,7 +87,7 @@ def write_parsed_to_csv(page_url, map_info, writer, pscores, webdriver_path=None
         if ('debian' in platform.platform()):
             driver = webdriver.Firefox(firefox_binary='/usr/bin/firefox-esr', options=options) # my machine doesn't have firefox so this is left hanging for now
         else:
-            driver = Edge(webdriver_path, capabilities=desired_cap)
+            driver = webdriver.Edge(webdriver_path, capabilities=desired_cap)
         driver.get(page_url)
 
     # read the current page
