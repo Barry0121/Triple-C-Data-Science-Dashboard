@@ -352,3 +352,4 @@ MigrationBackup/
 *.txt
 *.csv
 *.numbers
+*.pem
